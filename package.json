@@ -9,7 +9,7 @@
     "@apidevtools/json-schema-ref-parser": "11.9.3",
     "@davidsneighbour/markdownlint-config": "2025.0.2",
     "@davidsneighbour/release-config": "2025.0.2",
-    "@davidsneighbour/remark-config": "2025.0.2",
+    "@davidsneighbour/remark-config": "2025.1.1",
     "@davidsneighbour/tools": "2025.0.2"
   },
   "scripts": {
