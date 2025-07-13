@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 # Directory for the symlink to the Hugo executable
 BINDIR="/usr/local/bin"
 # Version at which to stop downloads
-STOP_VERSION="v0.84.0"
+STOP_VERSION="v0.140.0"
 # Download Directory
 DOWNLOAD_DIR="$SCRIPT_DIR/executables"
 # The GoHugo releases API URL
