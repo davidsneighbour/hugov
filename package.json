@@ -6,11 +6,11 @@
   "author": "Patrick Kollitsch <patrick@davids-neighbour.com>",
   "keywords": [],
   "devDependencies": {
-    "@apidevtools/json-schema-ref-parser": "11.9.3",
-    "@davidsneighbour/markdownlint-config": "2025.1.1",
-    "@davidsneighbour/release-config": "2025.1.1",
-    "@davidsneighbour/remark-config": "2025.1.1",
-    "@davidsneighbour/tools": "2025.1.1"
+    "@apidevtools/json-schema-ref-parser": "14.1.0",
+    "@davidsneighbour/markdownlint-config": "2025.2.4",
+    "@davidsneighbour/release-config": "2025.2.4",
+    "@davidsneighbour/remark-config": "2025.2.4",
+    "@davidsneighbour/tools": "2025.2.4"
   },
   "scripts": {
     "clean": "rimraf executables/* .wireit",
