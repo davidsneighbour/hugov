@@ -7,7 +7,7 @@
   "keywords": [],
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "14.1.0",
-    "@davidsneighbour/markdownlint-config": "2025.2.4",
+    "@davidsneighbour/markdownlint-config": "2025.3.0",
     "@davidsneighbour/release-config": "2025.2.4",
     "@davidsneighbour/remark-config": "2025.2.4",
     "@davidsneighbour/tools": "2025.2.4"
