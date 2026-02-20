@@ -10,7 +10,7 @@
     "@davidsneighbour/markdownlint-config": "2025.2.4",
     "@davidsneighbour/release-config": "2025.2.4",
     "@davidsneighbour/remark-config": "2025.2.4",
-    "@davidsneighbour/tools": "2025.2.4"
+    "@davidsneighbour/tools": "2026.0.2"
   },
   "scripts": {
     "clean": "rimraf executables/* .wireit",
