@@ -25,6 +25,17 @@ Or run it from within this repository:
 ./hugov
 ```
 
+### Configuration
+
+| Variable             | Default    | Description                                                                          |
+| -------------------- | ---------- | ------------------------------------------------------------------------------------ |
+| `HUGOV_STOP_VERSION` | `v0.140.0` | Oldest version to download. Downloads stop once this version is reached and fetched. |
+
+```bash
+# Download back to v0.120.0 instead of the default floor
+HUGOV_STOP_VERSION=v0.120.0 ./hugov --download
+```
+
 ## Read on
 
 * [Blog post presenting `hugov`](https://kollitsch.dev/blog/2024/hugov-managing-multiple-gohugo-versions/)

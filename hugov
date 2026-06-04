@@ -8,8 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 # Default configuration
 # Directory for the symlink to the Hugo executable
 BINDIR="/usr/local/bin"
-# Version at which to stop downloads
-STOP_VERSION="v0.140.0"
+# Oldest version to download. Downloads walk the release history from newest to
+# oldest and stop once this version is reached (it is the last one fetched).
+# Override with the HUGOV_STOP_VERSION environment variable.
+STOP_VERSION="${HUGOV_STOP_VERSION:-v0.140.0}"
 # Download Directory
 DOWNLOAD_DIR="$SCRIPT_DIR/executables"
 # The GoHugo releases API URL
@@ -48,6 +50,9 @@ show_help() {
   echo "  --bindir <directory>  Specify the directory for the Hugo symlink (default: /usr/local/bin)."
   echo "  --update              Download the latest versions and link the latest one (asks for standard or extended)."
   echo "  --help                Display this help message."
+  echo ""
+  echo "Environment:"
+  echo "  HUGOV_STOP_VERSION    Oldest version to download (default: $STOP_VERSION)."
 }
 
 # Function to update by downloading and linking the latest version
