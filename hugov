@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 
 # Report unexpected failures with the line number that triggered them.
-trap 'status=$?; echo "Error: hugov failed at line ${LINENO} (exit ${status})." >&2' ERR
+trap 'echo "Error: hugov failed at line ${LINENO} (exit $?)." >&2' ERR
 
 # Resolve the actual path of the script, following any symlinks
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"

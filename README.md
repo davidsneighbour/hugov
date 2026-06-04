@@ -36,6 +36,19 @@ Or run it from within this repository:
 HUGOV_STOP_VERSION=v0.120.0 ./hugov --download
 ```
 
+## Development
+
+The script is linted with [ShellCheck](https://www.shellcheck.net/). Run it
+locally before pushing:
+
+```bash
+npm run lint
+# or directly:
+shellcheck hugov bin/repo/release/postrelease
+```
+
+The same check runs in CI on every push to `main` and on pull requests.
+
 ## Read on
 
 * [Blog post presenting `hugov`](https://kollitsch.dev/blog/2024/hugov-managing-multiple-gohugo-versions/)
