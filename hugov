@@ -90,8 +90,9 @@ update_versions() {
 
 # Show script version by reading package.json
 show_version() {
-  if [ -f "package.json" ]; then
-    version=$(jq -r '.version' package.json 2>/dev/null)
+  local package_json="$SCRIPT_DIR/package.json"
+  if [ -f "$package_json" ]; then
+    version=$(jq -r '.version' "$package_json" 2>/dev/null)
     if [ "$version" != "null" ]; then
       echo "Script version: $version"
     else
