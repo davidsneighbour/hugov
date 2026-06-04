@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Fail fast: exit on errors, treat unset variables as errors, and fail a
+# pipeline if any stage fails. -E ensures the ERR trap fires inside functions.
+set -Eeuo pipefail
+
+# Report unexpected failures with the line number that triggered them.
+trap 'status=$?; echo "Error: hugov failed at line ${LINENO} (exit ${status})." >&2' ERR
+
 # Resolve the actual path of the script, following any symlinks
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 # Get the directory of the resolved script path
@@ -60,13 +67,13 @@ update_versions() {
   download_versions
 
   # Determine the latest version
-  available_versions=$(find "$DOWNLOAD_DIR" -type f -name "hugo-*" | sed -E 's/.*\/hugo-(v?[0-9]+\.[0-9]+\.[0-9]+)(-extended)?$/\1/' | sort -uV)
+  available_versions=$(find "$DOWNLOAD_DIR" -type f -name "hugo-*" 2>/dev/null | sed -E 's/.*\/hugo-(v?[0-9]+\.[0-9]+\.[0-9]+)(-extended)?$/\1/' | sort -uV || true)
   latest_version=$(echo "$available_versions" | tail -n 1)
 
   echo "Latest downloaded version: $latest_version"
 
   # Ask for extended or standard version
-  read -r -p "Do you want the extended version? (Y/n): " is_extended
+  read -r -p "Do you want the extended version? (Y/n): " is_extended || true
   is_extended="${is_extended:-Y}"
   if [[ "$is_extended" =~ ^[Yy]$ ]]; then
     selected_executable="$DOWNLOAD_DIR/hugo-${latest_version}-extended"
@@ -92,7 +99,7 @@ update_versions() {
 show_version() {
   local package_json="$SCRIPT_DIR/package.json"
   if [ -f "$package_json" ]; then
-    version=$(jq -r '.version' "$package_json" 2>/dev/null)
+    version=$(jq -r '.version' "$package_json" 2>/dev/null || true)
     if [ "$version" != "null" ]; then
       echo "Script version: $version"
     else
@@ -117,7 +124,7 @@ list_downloaded_versions() {
 download_releases_from_page() {
   local page_url="$1"
   local versions
-  versions=$(curl -s "$page_url" | jq -r '.[].tag_name')
+  versions=$(curl -s "$page_url" | jq -r '.[].tag_name' || true)
   host_url="https://github.com/gohugoio/hugo/releases/download"
 
   for version in $versions; do
@@ -172,7 +179,7 @@ download_single_version() {
     echo "Skipping standard $version, executable already exists."
   else
     echo "Downloading standard Hugo $version from $standard_url..."
-    curl -s -L -o "$standard_file" "$standard_url"
+    curl -s -L -o "$standard_file" "$standard_url" || true
 
     # Validate if the file exists and is a valid tar.gz archive
     if [ -f "$standard_file" ] && tar -tzf "$standard_file" &>/dev/null; then
@@ -190,7 +197,7 @@ download_single_version() {
     echo "Skipping extended $version, executable already exists."
   else
     echo "Downloading extended Hugo $version from $extended_url..."
-    curl -s -L -o "$extended_file" "$extended_url"
+    curl -s -L -o "$extended_file" "$extended_url" || true
 
     # Validate if the file exists and is a valid tar.gz archive
     if [ -f "$extended_file" ] && tar -tzf "$extended_file" &>/dev/null; then
@@ -211,7 +218,7 @@ download_versions() {
   page_number=1
   while true; do
     page_url="${BASE_URL}?per_page=100&page=${page_number}"
-    page_content=$(curl -s "$page_url")
+    page_content=$(curl -s "$page_url" || true)
     echo "Processing page $page_number..."
 
     if [ -z "$page_content" ] || [ "$page_content" == "[]" ]; then
@@ -227,7 +234,7 @@ download_versions() {
     if ! download_releases_from_page "$page_url"; then
       break
     fi
-    ((page_number++))
+    page_number=$((page_number + 1))
   done
 }
 
@@ -238,21 +245,21 @@ link_version() {
   echo ""
 
   # List unique version numbers without differentiating normal/extended versions
-  available_versions=$(find $DOWNLOAD_DIR -type f -name "hugo-*" | sed -E 's/.*\/hugo-(v?[0-9]+\.[0-9]+\.[0-9]+)(-extended)?$/\1/' | sort -uV)
+  available_versions=$(find "$DOWNLOAD_DIR" -type f -name "hugo-*" 2>/dev/null | sed -E 's/.*\/hugo-(v?[0-9]+\.[0-9]+\.[0-9]+)(-extended)?$/\1/' | sort -uV || true)
   latest_version=$(echo "$available_versions" | tail -n 1)
 
   echo "Available versions to link:"
   echo "$available_versions"
 
   # Prompt user to enter version, with the latest version preselected
-  read -r -p "Enter the version you want to symlink (default is latest: $latest_version): " selected_version
+  read -r -p "Enter the version you want to symlink (default is latest: $latest_version): " selected_version || true
   selected_version="${selected_version:-$latest_version}"
 
   # Ensure the version has the "v" prefix, as files are named with it
   normalized_version="hugo-${selected_version}"
 
   # Ask if the user wants the extended version or standard, defaulting to "Y" (extended)
-  read -r -p "Do you want the extended version? (Y/n): " is_extended
+  read -r -p "Do you want the extended version? (Y/n): " is_extended || true
   is_extended="${is_extended:-Y}"
   if [[ "$is_extended" =~ ^[Yy]$ ]]; then
     selected_executable="$DOWNLOAD_DIR/${normalized_version}-extended"
@@ -320,6 +327,10 @@ while [[ $# -gt 0 ]]; do
     update_flag=true
     ;;
   --bindir)
+    if [[ $# -lt 2 ]]; then
+      echo "Error: --bindir requires a directory argument."
+      exit 1
+    fi
     shift
     BINDIR="$1"
     ;;
