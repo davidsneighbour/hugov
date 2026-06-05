@@ -23,17 +23,40 @@ STOP_VERSION="${HUGOV_STOP_VERSION:-v0.140.0}"
 DOWNLOAD_DIR="$SCRIPT_DIR/executables"
 # The GoHugo releases API URL
 BASE_URL="https://api.github.com/repos/gohugoio/hugo/releases"
+# Where release assets are published
+HOST_URL="https://github.com/gohugoio/hugo/releases/download"
 
-# Initialize flags to enforce exclusivity
-download_flag=false
-list_flag=false
-link_flag=false
-update_flag=false
+# Which build flavor to operate on: standard, extended, or both. Defaults to
+# extended (the most commonly used). FLAVOR_SET tracks whether the user picked
+# one explicitly so interactive commands know to skip their prompt.
+FLAVOR="extended"
+FLAVOR_SET=false
+# Optional directory to mirror raw GitHub API responses into (for debugging).
+LOG_DIR=""
+# Selected action and its optional arguments (set during argument parsing).
+ACTION=""
+DOWNLOAD_VERSION=""
+PRUNE_KEEP=5
+# Skip SHA256 checksum verification when set to true.
+NO_VERIFY=false
 
-# Check if required dependencies (jq, curl, tar, rm, ln) are installed
+# Platform values, populated by detect_platform.
+OS=""
+ARCH=""
+
+# Build the Authorization header arguments from a GitHub token, if present.
+# Honoring a token raises the API limit from 60 to 5000 requests per hour.
+GH_AUTH=()
+_gh_token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+if [ -n "$_gh_token" ]; then
+  GH_AUTH=(-H "Authorization: Bearer $_gh_token")
+fi
+unset _gh_token
+
+# Check if required dependencies are installed.
 check_dependencies() {
   local missing=0
-  for cmd in jq curl tar rm ln; do
+  for cmd in jq curl tar rm ln find sed sort; do
     if ! command -v "$cmd" &>/dev/null; then
       echo "Error: $cmd is not installed."
       missing=1
@@ -49,49 +72,129 @@ check_dependencies() {
 show_help() {
   echo "Usage: $0 [OPTIONS]"
   echo ""
-  echo "Options:"
-  echo "  --download            Download only missing versions of Hugo."
+  echo "Actions (mutually exclusive):"
+  echo "  --download [version]  Download missing versions, or a single <version> if given."
   echo "  --list                List already downloaded Hugo versions."
+  echo "  --link                Symlink a chosen version into BINDIR."
+  echo "  --update              Download the latest versions and link the newest."
+  echo "  --current             Show which version BINDIR/hugo currently points at."
+  echo "  --uninstall           Remove the BINDIR/hugo symlink."
+  echo "  --prune               Delete old downloaded versions (see --keep)."
   echo "  --version             Display the script version."
-  echo "  --link                Create a symlink to a specified Hugo version in the BINDIR directory (requires sudo)."
-  echo "  --bindir <directory>  Specify the directory for the Hugo symlink (default: /usr/local/bin)."
-  echo "  --update              Download the latest versions and link the latest one (asks for standard or extended)."
   echo "  --help                Display this help message."
+  echo ""
+  echo "Options:"
+  echo "  --bindir <directory>  Directory for the Hugo symlink (default: $BINDIR)."
+  echo "  --extended            Operate on extended builds (default)."
+  echo "  --standard            Operate on standard builds."
+  echo "  --both                Download both standard and extended builds."
+  echo "  --keep <n>            With --prune, keep the newest <n> versions (default: $PRUNE_KEEP)."
+  echo "  --log-dir <directory> Mirror raw GitHub API responses into <directory>."
+  echo "  --no-verify           Skip SHA256 checksum verification of downloads."
   echo ""
   echo "Environment:"
   echo "  HUGOV_STOP_VERSION    Oldest version to download (default: $STOP_VERSION)."
+  echo "  GITHUB_TOKEN/GH_TOKEN GitHub token used to raise the API rate limit."
 }
 
-# Function to update by downloading and linking the latest version
-update_versions() {
-  download_versions
+# Detect the operating system and CPU architecture, normalizing to the names
+# Hugo uses in its release asset filenames.
+detect_platform() {
+  local kernel machine
+  kernel="$(uname -s)"
+  machine="$(uname -m)"
+  case "$kernel" in
+  Linux) OS="linux" ;;
+  Darwin) OS="darwin" ;;
+  *) OS="$(echo "$kernel" | tr '[:upper:]' '[:lower:]')" ;;
+  esac
+  case "$machine" in
+  x86_64 | amd64) ARCH="amd64" ;;
+  aarch64 | arm64) ARCH="arm64" ;;
+  *) ARCH="$machine" ;;
+  esac
+}
 
-  # Determine the latest version
-  available_versions=$(find "$DOWNLOAD_DIR" -type f -name "hugo-*" 2>/dev/null | sed -E 's/.*\/hugo-(v?[0-9]+\.[0-9]+\.[0-9]+)(-extended)?$/\1/' | sort -uV || true)
-  latest_version=$(echo "$available_versions" | tail -n 1)
+# Helper function to compare two versions using version sorting.
+version_ge() {
+  # Returns 0 if $1 >= $2, else 1
+  [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" == "$2" ]]
+}
 
-  echo "Latest downloaded version: $latest_version"
+# Perform a GitHub API request, including the auth header when available.
+api_curl() {
+  curl -s ${GH_AUTH[@]+"${GH_AUTH[@]}"} "$@"
+}
 
-  # Ask for extended or standard version
-  read -r -p "Do you want the extended version? (Y/n): " is_extended || true
-  is_extended="${is_extended:-Y}"
-  if [[ "$is_extended" =~ ^[Yy]$ ]]; then
-    selected_executable="$DOWNLOAD_DIR/hugo-${latest_version}-extended"
+# Build the download URL for a given version and flavor (standard|extended).
+build_asset_url() {
+  local version="$1"
+  local flavor="$2"
+  # Hugo switched the linux/amd64 asset naming from "Linux-64bit" to
+  # "linux-amd64" at v0.102.3; everything else uses the modern scheme.
+  local mid_version="v0.102.3"
+  local ver="${version#v}"
+  local ext_prefix=""
+  [[ "$flavor" == "extended" ]] && ext_prefix="extended_"
+
+  local platform
+  if [[ "$OS" == "linux" && "$ARCH" == "amd64" ]] && ! version_ge "$version" "$mid_version"; then
+    platform="Linux-64bit"
+  elif [[ "$OS" == "darwin" ]]; then
+    platform="darwin-universal"
   else
-    selected_executable="$DOWNLOAD_DIR/hugo-${latest_version}"
+    platform="${OS}-${ARCH}"
   fi
 
-  # Convert selected_executable to an absolute path
-  selected_executable="$(realpath "$selected_executable")"
+  printf '%s/%s/hugo_%s%s_%s.tar.gz' "$HOST_URL" "$version" "$ext_prefix" "$ver" "$platform"
+}
 
-  if [ -f "$selected_executable" ]; then
-    # Proceed to create symlink
-    sudo rm -f "$BINDIR/hugo"
-    sudo ln -s "$selected_executable" "$BINDIR/hugo"
-    echo "Symlink created: $BINDIR/hugo -> $selected_executable"
+# Verify a downloaded archive against Hugo's published checksums file.
+# Returns 0 when verified or when verification is unavailable/skipped.
+verify_checksum() {
+  local version="$1"
+  local flavor="$2"
+  local archive="$3"
+
+  if $NO_VERIFY; then
+    return 0
+  fi
+  if ! command -v sha256sum &>/dev/null; then
+    echo "Warning: sha256sum not found; skipping checksum verification." >&2
+    return 0
+  fi
+
+  local ver="${version#v}"
+  local asset_name checksums_url checksums expected actual
+  asset_name="$(basename "$(build_asset_url "$version" "$flavor")")"
+  checksums_url="${HOST_URL}/${version}/hugo_${ver}_checksums.txt"
+  checksums="$(curl -fsSL "$checksums_url" 2>/dev/null || true)"
+
+  if [ -z "$checksums" ]; then
+    echo "Warning: could not fetch checksums for $version; skipping verification." >&2
+    return 0
+  fi
+
+  expected="$(echo "$checksums" | awk -v f="$asset_name" '$2 == f {print $1}')"
+  if [ -z "$expected" ]; then
+    echo "Warning: no checksum listed for $asset_name; skipping verification." >&2
+    return 0
+  fi
+
+  actual="$(sha256sum "$archive" | awk '{print $1}')"
+  if [ "$expected" != "$actual" ]; then
+    echo "Error: checksum mismatch for $asset_name (expected $expected, got $actual)." >&2
+    return 1
+  fi
+  return 0
+}
+
+# Run a command with sudo only when BINDIR is not writable by the current user.
+maybe_sudo() {
+  if [ -w "$BINDIR" ]; then
+    "$@"
   else
-    echo "Error: Hugo version $latest_version${is_extended:+-extended} is not available."
-    exit 1
+    sudo "$@"
   fi
 }
 
@@ -110,6 +213,13 @@ show_version() {
   fi
 }
 
+# Return the unique downloaded version numbers, oldest to newest.
+downloaded_versions() {
+  find "$DOWNLOAD_DIR" -type f -name "hugo-*" 2>/dev/null |
+    sed -E 's/.*\/hugo-(v?[0-9]+\.[0-9]+\.[0-9]+)(-extended)?$/\1/' |
+    sort -uV || true
+}
+
 # Function to list versions in the downloads folder
 list_downloaded_versions() {
   echo "Downloaded Hugo versions:"
@@ -120,235 +230,368 @@ list_downloaded_versions() {
   fi
 }
 
-# Function to download and extract Hugo releases
-download_releases_from_page() {
-  local page_url="$1"
-  local versions
-  versions=$(curl -s "$page_url" | jq -r '.[].tag_name' || true)
-  host_url="https://github.com/gohugoio/hugo/releases/download"
+# Download and install a single flavor (standard|extended) of one version.
+download_flavor() {
+  local version="$1"
+  local flavor="$2"
+  local suffix=""
+  [[ "$flavor" == "extended" ]] && suffix="-extended"
 
-  for version in $versions; do
-    # Stop downloading if the specified version is reached
-    if [[ "$version" == "$STOP_VERSION" ]]; then
-      echo "Reached version $STOP_VERSION. Downloading and stopping further downloads."
-      download_single_version "$version" "$host_url"
-      return 1 # Signal to stop the outer loop in download_versions
-    fi
+  local executable="$DOWNLOAD_DIR/hugo-${version}${suffix}"
+  local archive="$DOWNLOAD_DIR/hugo-${version}${suffix}.tar.gz"
 
-    # Proceed with the download
-    download_single_version "$version" "$host_url"
-  done
-  return 0
+  if [ -f "$executable" ]; then
+    echo "Skipping $flavor $version, executable already exists."
+    return 0
+  fi
+
+  local url
+  url="$(build_asset_url "$version" "$flavor")"
+  echo "Downloading $flavor Hugo $version from $url..."
+  if ! curl -fsSL -o "$archive" "$url"; then
+    echo "Error: failed to download $flavor Hugo $version."
+    rm -f "$archive"
+    return 0
+  fi
+
+  if ! tar -tzf "$archive" &>/dev/null; then
+    echo "Error: $flavor Hugo $version is not a valid tar.gz archive."
+    rm -f "$archive"
+    return 0
+  fi
+
+  if ! verify_checksum "$version" "$flavor" "$archive"; then
+    rm -f "$archive"
+    return 0
+  fi
+
+  echo "Extracting $flavor Hugo $version..."
+  tar -xzf "$archive" -C "$DOWNLOAD_DIR" "hugo" && mv "$DOWNLOAD_DIR/hugo" "$executable"
+  rm -f "$archive"
 }
 
-# Helper function to compare two versions using version sorting
-version_ge() {
-  # Returns 0 if $1 >= $2, else 1
-  [[ "$(echo -e "$1\n$2" | sort -V | head -n 1)" == "$2" ]]
-}
-
+# Download the requested flavor(s) of a single version.
 download_single_version() {
   local version="$1"
-  local host_url="$2"
-  local threshold_version="v0.102.0"
-  local mid_version="v0.102.3"
+  local flavors=()
+  case "$FLAVOR" in
+  standard) flavors=(standard) ;;
+  extended) flavors=(extended) ;;
+  both) flavors=(standard extended) ;;
+  esac
+  local flavor
+  for flavor in "${flavors[@]}"; do
+    download_flavor "$version" "$flavor"
+  done
+}
 
-  # Define paths for standard and extended executables
-  local standard_file="$DOWNLOAD_DIR/hugo-$version.tar.gz"
-  local extended_file="$DOWNLOAD_DIR/hugo-$version-extended.tar.gz"
-  local standard_executable="$DOWNLOAD_DIR/hugo-$version"
-  local extended_executable="$DOWNLOAD_DIR/hugo-$version-extended"
+# Function to download and extract Hugo releases listed on one API page.
+download_releases_from_page() {
+  local page_content="$1"
+  local versions
+  versions=$(echo "$page_content" | jq -r '.[].tag_name' || true)
 
-  # Determine URL format based on version comparison
-  if version_ge "$version" "$threshold_version" && ! version_ge "$version" "$mid_version"; then
-    # Format for versions from v0.102.0 up to and including v0.102.3
-    local standard_url="${host_url}/${version}/hugo_${version:1}_Linux-64bit.tar.gz"
-    local extended_url="${host_url}/${version}/hugo_extended_${version:1}_Linux-64bit.tar.gz"
-  elif version_ge "$version" "$mid_version"; then
-    # Format for versions after v0.102.3
-    local standard_url="${host_url}/${version}/hugo_${version:1}_linux-amd64.tar.gz"
-    local extended_url="${host_url}/${version}/hugo_extended_${version:1}_linux-amd64.tar.gz"
-  else
-    # Format for versions up to v0.102.0
-    local standard_url="${host_url}/${version}/hugo_${version:1}_Linux-64bit.tar.gz"
-    local extended_url="${host_url}/${version}/hugo_extended_${version:1}_Linux-64bit.tar.gz"
-  fi
+  for version in $versions; do
+    download_single_version "$version"
 
-  # Download and validate standard version
-  if [ -f "$standard_executable" ]; then
-    echo "Skipping standard $version, executable already exists."
-  else
-    echo "Downloading standard Hugo $version from $standard_url..."
-    curl -s -L -o "$standard_file" "$standard_url" || true
-
-    # Validate if the file exists and is a valid tar.gz archive
-    if [ -f "$standard_file" ] && tar -tzf "$standard_file" &>/dev/null; then
-      echo "Extracting standard Hugo $version..."
-      tar -xzf "$standard_file" -C "$DOWNLOAD_DIR" "hugo" && mv "$DOWNLOAD_DIR/hugo" "$standard_executable"
-      rm "$standard_file"
-    else
-      echo "Error: Failed to download a valid standard Hugo $version file."
-      rm -f "$standard_file"
+    # Stop once the oldest requested version has been fetched.
+    if [[ "$version" == "$STOP_VERSION" ]]; then
+      echo "Reached version $STOP_VERSION. Stopping further downloads."
+      return 1 # Signal to stop the outer loop in download_versions
     fi
-  fi
-
-  # Download and validate extended version
-  if [ -f "$extended_executable" ]; then
-    echo "Skipping extended $version, executable already exists."
-  else
-    echo "Downloading extended Hugo $version from $extended_url..."
-    curl -s -L -o "$extended_file" "$extended_url" || true
-
-    # Validate if the file exists and is a valid tar.gz archive
-    if [ -f "$extended_file" ] && tar -tzf "$extended_file" &>/dev/null; then
-      echo "Extracting extended Hugo $version..."
-      tar -xzf "$extended_file" -C "$DOWNLOAD_DIR" "hugo" && mv "$DOWNLOAD_DIR/hugo" "$extended_executable"
-      rm "$extended_file"
-    else
-      echo "Error: Failed to download a valid extended Hugo $version file."
-      rm -f "$extended_file"
-    fi
-  fi
+  done
+  return 0
 }
 
 # Function to download missing versions
 download_versions() {
   echo "Downloading only missing versions of Hugo. Existing files will be skipped."
   mkdir -p "$DOWNLOAD_DIR"
+  [ -n "$LOG_DIR" ] && mkdir -p "$LOG_DIR"
   page_number=1
   while true; do
     page_url="${BASE_URL}?per_page=100&page=${page_number}"
-    page_content=$(curl -s "$page_url" || true)
+    page_content=$(api_curl "$page_url" || true)
     echo "Processing page $page_number..."
+
+    if [ -n "$LOG_DIR" ]; then
+      printf '%s' "$page_content" >"$LOG_DIR/releases-page-${page_number}.json"
+    fi
 
     if [ -z "$page_content" ] || [ "$page_content" == "[]" ]; then
       break
     fi
 
     if [[ "$page_content" == *"API rate limit exceeded"* ]]; then
-      echo "API rate limit exceeded. Currently 60 unauthenticated requests per hour are allowed. Wait for 1h."
+      echo "API rate limit exceeded. Set GITHUB_TOKEN or GH_TOKEN to raise the limit to 5000/hour, or wait."
       break
     fi
 
     # Download releases from this page and stop if STOP_VERSION is reached
-    if ! download_releases_from_page "$page_url"; then
+    if ! download_releases_from_page "$page_content"; then
       break
     fi
     page_number=$((page_number + 1))
   done
 }
 
+# Function to update by downloading and linking the latest version
+update_versions() {
+  download_versions
+
+  # Determine the latest version
+  local latest_version
+  latest_version=$(downloaded_versions | tail -n 1)
+  echo "Latest downloaded version: $latest_version"
+
+  link_to_version "$latest_version"
+}
+
+# Resolve the executable path for a version honoring the chosen/asked flavor.
+resolve_executable() {
+  local version="$1"
+  local want_extended
+
+  if $FLAVOR_SET; then
+    [[ "$FLAVOR" == "standard" ]] && want_extended=false || want_extended=true
+  else
+    local answer
+    read -r -p "Do you want the extended version? (Y/n): " answer || true
+    answer="${answer:-Y}"
+    [[ "$answer" =~ ^[Yy]$ ]] && want_extended=true || want_extended=false
+  fi
+
+  if $want_extended; then
+    echo "$DOWNLOAD_DIR/hugo-${version}-extended"
+  else
+    echo "$DOWNLOAD_DIR/hugo-${version}"
+  fi
+}
+
+# Atomically point BINDIR/hugo at the executable for the given version.
+link_to_version() {
+  local version="$1"
+  local selected_executable
+  selected_executable="$(resolve_executable "$version")"
+
+  if [ ! -f "$selected_executable" ]; then
+    echo "Error: $(basename "$selected_executable") is not downloaded."
+    exit 1
+  fi
+  selected_executable="$(realpath "$selected_executable")"
+
+  if [ ! -w "$BINDIR" ]; then
+    echo "This operation needs sudo to write into $BINDIR."
+  fi
+  # ln -sfn replaces the symlink atomically, leaving no window without hugo.
+  maybe_sudo ln -sfn "$selected_executable" "$BINDIR/hugo"
+  echo "Symlink created: $BINDIR/hugo -> $selected_executable"
+}
+
 # Function to create a symlink for a specified version
 link_version() {
-  echo "This operation requires sudo access to create a symlink in $BINDIR."
-  echo "Please ensure you understand the ramifications of using sudo."
-  echo ""
-
-  # List unique version numbers without differentiating normal/extended versions
-  available_versions=$(find "$DOWNLOAD_DIR" -type f -name "hugo-*" 2>/dev/null | sed -E 's/.*\/hugo-(v?[0-9]+\.[0-9]+\.[0-9]+)(-extended)?$/\1/' | sort -uV || true)
+  local available_versions latest_version selected_version
+  available_versions="$(downloaded_versions)"
   latest_version=$(echo "$available_versions" | tail -n 1)
 
   echo "Available versions to link:"
   echo "$available_versions"
 
-  # Prompt user to enter version, with the latest version preselected
   read -r -p "Enter the version you want to symlink (default is latest: $latest_version): " selected_version || true
   selected_version="${selected_version:-$latest_version}"
 
-  # Ensure the version has the "v" prefix, as files are named with it
-  normalized_version="hugo-${selected_version}"
+  link_to_version "$selected_version"
+}
 
-  # Ask if the user wants the extended version or standard, defaulting to "Y" (extended)
-  read -r -p "Do you want the extended version? (Y/n): " is_extended || true
-  is_extended="${is_extended:-Y}"
-  if [[ "$is_extended" =~ ^[Yy]$ ]]; then
-    selected_executable="$DOWNLOAD_DIR/${normalized_version}-extended"
-  else
-    selected_executable="$DOWNLOAD_DIR/$normalized_version"
+# Show which version BINDIR/hugo currently points at.
+current_version() {
+  local link="$BINDIR/hugo"
+  if [ ! -e "$link" ] && [ ! -L "$link" ]; then
+    echo "No hugo symlink found at $link."
+    return 0
   fi
+  local target
+  target="$(readlink -f "$link" 2>/dev/null || true)"
+  if [ -z "$target" ]; then
+    echo "$link is a broken symlink."
+    return 0
+  fi
+  echo "$link -> $target"
+  echo "Version: ${target##*/hugo-}"
+}
 
-  # Check if the selected executable exists
-  if [ ! -f "$selected_executable" ]; then
-    echo "Error: Hugo version $selected_version${is_extended:+-extended} is not downloaded."
+# Remove the BINDIR/hugo symlink.
+uninstall_version() {
+  local link="$BINDIR/hugo"
+  if [ -L "$link" ] || [ -e "$link" ]; then
+    if [ ! -w "$BINDIR" ]; then
+      echo "This operation needs sudo to remove $link."
+    fi
+    maybe_sudo rm -f "$link"
+    echo "Removed $link."
+  else
+    echo "Nothing to remove at $link."
+  fi
+}
+
+# Delete old downloaded versions, keeping the newest $PRUNE_KEEP.
+prune_versions() {
+  if ! [[ "$PRUNE_KEEP" =~ ^[0-9]+$ ]]; then
+    echo "Error: --keep requires a non-negative integer." >&2
     exit 1
   fi
 
-  # Remove existing symlink if it exists, then create a new one in the specified directory
-  sudo rm -f "$BINDIR/hugo"
-  sudo ln -s "$selected_executable" "$BINDIR/hugo"
-  echo "Symlink created: $BINDIR/hugo -> $selected_executable"
+  local versions total to_remove
+  versions="$(downloaded_versions)"
+  total="$(echo "$versions" | grep -c . || true)"
+
+  if [ "$total" -le "$PRUNE_KEEP" ]; then
+    echo "Nothing to prune ($total downloaded, keeping $PRUNE_KEEP)."
+    return 0
+  fi
+
+  to_remove="$(echo "$versions" | head -n "$((total - PRUNE_KEEP))")"
+  echo "The following versions will be removed (keeping the newest $PRUNE_KEEP):"
+  echo "$to_remove"
+  local confirm
+  read -r -p "Proceed? (y/N): " confirm || true
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "Aborted."
+    return 0
+  fi
+
+  local v
+  while IFS= read -r v; do
+    [ -z "$v" ] && continue
+    rm -f "$DOWNLOAD_DIR/hugo-$v" "$DOWNLOAD_DIR/hugo-$v-extended"
+    echo "Removed $v"
+  done <<<"$to_remove"
+}
+
+# Record the chosen action, enforcing that only one is selected.
+set_action() {
+  if [ -n "$ACTION" ]; then
+    echo "Error: --$1 cannot be combined with --$ACTION." >&2
+    exit 1
+  fi
+  ACTION="$1"
 }
 
 # Main logic
-check_dependencies
+main() {
+  check_dependencies
+  detect_platform
 
-# Process arguments
-if [[ $# -eq 0 ]]; then
-  show_help
-  exit 0
-fi
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-  --help)
+  # Process arguments
+  if [[ $# -eq 0 ]]; then
     show_help
     exit 0
-    ;;
-  --list)
-    if $download_flag || $link_flag || $update_flag; then
-      echo "Error: --list cannot be used with --download, --link, or --update."
-      exit 1
-    fi
-    list_flag=true
-    ;;
-  --download)
-    if $list_flag || $link_flag || $update_flag; then
-      echo "Error: --download cannot be used with --list, --link, or --update."
-      exit 1
-    fi
-    download_flag=true
-    ;;
-  --version)
-    show_version
-    exit 0
-    ;;
-  --link)
-    if $download_flag || $list_flag || $update_flag; then
-      echo "Error: --link cannot be used with --download, --list, or --update."
-      exit 1
-    fi
-    link_flag=true
-    ;;
-  --update)
-    if $download_flag || $list_flag || $link_flag; then
-      echo "Error: --update cannot be used with --download, --list, or --link."
-      exit 1
-    fi
-    update_flag=true
-    ;;
-  --bindir)
-    if [[ $# -lt 2 ]]; then
-      echo "Error: --bindir requires a directory argument."
-      exit 1
-    fi
-    shift
-    BINDIR="$1"
-    ;;
-  *)
-    echo "Invalid option: $1. Use --help for available options."
-    exit 1
-    ;;
-  esac
-  shift
-done
+  fi
 
-# Execute the selected exclusive option
-if $download_flag; then
-  download_versions
-elif $list_flag; then
-  list_downloaded_versions
-elif $link_flag; then
-  link_version
-elif $update_flag; then
-  update_versions
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --help)
+      show_help
+      exit 0
+      ;;
+    --version)
+      show_version
+      exit 0
+      ;;
+    --list)
+      set_action list
+      ;;
+    --download)
+      set_action download
+      # Accept an optional single version argument.
+      if [[ $# -ge 2 && "$2" != --* ]]; then
+        DOWNLOAD_VERSION="$2"
+        shift
+      fi
+      ;;
+    --link)
+      set_action link
+      ;;
+    --update)
+      set_action update
+      ;;
+    --current)
+      set_action current
+      ;;
+    --uninstall)
+      set_action uninstall
+      ;;
+    --prune)
+      set_action prune
+      ;;
+    --keep)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --keep requires a number argument."
+        exit 1
+      fi
+      shift
+      PRUNE_KEEP="$1"
+      ;;
+    --bindir)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --bindir requires a directory argument."
+        exit 1
+      fi
+      shift
+      BINDIR="$1"
+      ;;
+    --log-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --log-dir requires a directory argument."
+        exit 1
+      fi
+      shift
+      LOG_DIR="$1"
+      ;;
+    --extended)
+      FLAVOR="extended"
+      FLAVOR_SET=true
+      ;;
+    --standard)
+      FLAVOR="standard"
+      FLAVOR_SET=true
+      ;;
+    --both)
+      FLAVOR="both"
+      FLAVOR_SET=true
+      ;;
+    --no-verify)
+      NO_VERIFY=true
+      ;;
+    *)
+      echo "Invalid option: $1. Use --help for available options."
+      exit 1
+      ;;
+    esac
+    shift
+  done
+
+  # Execute the selected action.
+  case "$ACTION" in
+  download)
+    if [ -n "$DOWNLOAD_VERSION" ]; then
+      mkdir -p "$DOWNLOAD_DIR"
+      download_single_version "$DOWNLOAD_VERSION"
+    else
+      download_versions
+    fi
+    ;;
+  list) list_downloaded_versions ;;
+  link) link_version ;;
+  update) update_versions ;;
+  current) current_version ;;
+  uninstall) uninstall_version ;;
+  prune) prune_versions ;;
+  "") show_help ;;
+  esac
+}
+
+# Run only when executed directly, so tests can source this file for unit tests.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
 fi

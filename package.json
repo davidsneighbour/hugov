@@ -11,11 +11,13 @@
   ],
   "devDependencies": {
     "@davidsneighbour/tools": "2026.0.5",
-    "@dnbhq/markdownlint-config": "0.2.7"
+    "@dnbhq/markdownlint-config": "0.2.7",
+    "bats": "1.13.0"
   },
   "scripts": {
     "clean": "rimraf executables/* .wireit",
     "lint": "shellcheck hugov",
+    "test": "bats test",
     "release": "wireit"
   },
   "wireit": {

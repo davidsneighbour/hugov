@@ -19,3 +19,18 @@ jobs:
       # shellcheck is preinstalled on GitHub-hosted ubuntu runners.
       - name: Run shellcheck
         run: shellcheck hugov
+
+  test:
+    name: bats
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: lts/*
+      - name: Install dependencies
+        run: npm ci
+      - name: Run bats tests
+        run: npm test
