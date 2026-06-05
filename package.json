@@ -10,11 +10,10 @@
     "bash"
   ],
   "devDependencies": {
-    "@apidevtools/json-schema-ref-parser": "14.1.0",
-    "@davidsneighbour/markdownlint-config": "2025.2.4",
-    "@davidsneighbour/release-config": "2025.2.4",
-    "@davidsneighbour/remark-config": "2025.2.4",
-    "@davidsneighbour/tools": "2025.2.4"
+    "@apidevtools/json-schema-ref-parser": "15.3.5",
+    "@davidsneighbour/remark-config": "2026.0.3",
+    "@davidsneighbour/tools": "2026.0.5",
+    "@dnbhq/markdownlint-config": "0.2.7"
   },
   "scripts": {
     "clean": "rimraf executables/* .wireit",
@@ -23,7 +22,11 @@
   },
   "wireit": {
     "release": {
-      "command": "commit-and-tag-version --sign -a -t \"v\" --releaseCommitMessageFormat \"chore(release): v{{currentTag}}\" -- --no-verify && ./bin/repo/release/postrelease"
+      "command": "release-it --config .release-it.ts --ci"
     }
+  },
+  "dependencies": {
+    "@release-it/conventional-changelog": "11.0.1",
+    "release-it": "20.2.0"
   }
 }
