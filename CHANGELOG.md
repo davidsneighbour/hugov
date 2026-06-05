@@ -1,5 +1,28 @@
 # Changelog
 
+## [2026.0.0](https://github.com/davidsneighbour/hugov/compare/v2025.0.0...v2026.0.0) (2026-06-05)
+
+### Bug Fixes
+
+* enable strict mode with an error trap ([e064c2c](https://github.com/davidsneighbour/hugov/commit/e064c2c754ee9cf02e53ef5bfe90be74adf7ee8e))
+* make download floor deliberate and configurable ([cd3ac3b](https://github.com/davidsneighbour/hugov/commit/cd3ac3bdde8fca880458ef1a01977847e59cdf91))
+* read package.json from script dir for --version ([275c54d](https://github.com/davidsneighbour/hugov/commit/275c54d01f27c6e512a0240e665484a2ceb98201))
+
+### Build
+
+* add scratch files to gitignore ([a1569f4](https://github.com/davidsneighbour/hugov/commit/a1569f4973f1e42f973989ee08221d45235a2a62))
+* rework release system ([14b2a73](https://github.com/davidsneighbour/hugov/commit/14b2a730df1054e2adfb7b11f708013fe0d21113))
+* update package.json ([a787859](https://github.com/davidsneighbour/hugov/commit/a78785991ab8be0828a9ab76d442a5bd0cb65cc8))
+* **vscode:** add workspace configuration ([14f199f](https://github.com/davidsneighbour/hugov/commit/14f199f4545235daaad6bd719cce1f32dc3cce15))
+
+### CI
+
+* lint the script with shellcheck ([8c85f0e](https://github.com/davidsneighbour/hugov/commit/8c85f0e3ca13915e5f8475a1b7ad38170f5e1aa5))
+
+### Documentation
+
+* **fix:** update license year ([e40e28c](https://github.com/davidsneighbour/hugov/commit/e40e28c2424c36948b83c01ed43f41273f455f62))
+
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
 ## [2025.0.0](https://github.com/davidsneighbour/hugov/compare/v2024.2.4...v2025.0.0) (2025-07-13)
