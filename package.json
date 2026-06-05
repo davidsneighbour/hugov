@@ -10,14 +10,12 @@
     "bash"
   ],
   "devDependencies": {
-    "@apidevtools/json-schema-ref-parser": "15.3.5",
-    "@davidsneighbour/remark-config": "2026.0.3",
     "@davidsneighbour/tools": "2026.0.5",
     "@dnbhq/markdownlint-config": "0.2.7"
   },
   "scripts": {
     "clean": "rimraf executables/* .wireit",
-    "lint": "shellcheck hugov bin/repo/release/postrelease",
+    "lint": "shellcheck hugov",
     "release": "wireit"
   },
   "wireit": {

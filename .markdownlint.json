@@ -1,3 +1,3 @@
 {
-	"extends": "@davidsneighbour/markdownlint-config"
+	"extends": "@dnbhq/markdownlint-config"
 }

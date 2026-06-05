@@ -44,7 +44,7 @@ locally before pushing:
 ```bash
 npm run lint
 # or directly:
-shellcheck hugov bin/repo/release/postrelease
+shellcheck hugov
 ```
 
 The same check runs in CI on every push to `main` and on pull requests.

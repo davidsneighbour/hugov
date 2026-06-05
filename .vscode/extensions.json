@@ -1,5 +1,6 @@
 {
     "recommendations": [
-        "anthropic.claude-code"
+        "anthropic.claude-code",
+        "zizmor.zizmor-vscode"
     ]
 }
