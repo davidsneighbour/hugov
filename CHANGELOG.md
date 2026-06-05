@@ -1,5 +1,19 @@
 # Changelog
 
+## [2026.1.0](https://github.com/davidsneighbour/hugov/compare/v2026.0.0...v2026.1.0) (2026-06-05)
+
+### Features
+
+* **hugov:** flavor selection, checksums, multi-arch, new commands + bats tests ([e3a0d0d](https://github.com/davidsneighbour/hugov/commit/e3a0d0d44b0eea7897f6d95fe75e7e8c9ec900b9))
+
+### Build
+
+* cleanup markdown linting ([867d7af](https://github.com/davidsneighbour/hugov/commit/867d7afe7eb77800fc15776db0021ae45d5ab66e))
+
+### CI
+
+* **fix:** update lint workflow ([d083447](https://github.com/davidsneighbour/hugov/commit/d083447a91c5de19644e7429c4f72a3d75247d68))
+
 ## [2026.0.0](https://github.com/davidsneighbour/hugov/compare/v2025.0.0...v2026.0.0) (2026-06-05)
 
 ### Bug Fixes
