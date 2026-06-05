@@ -4,7 +4,11 @@
   "version": "2025.0.0",
   "license": "MIT",
   "author": "Patrick Kollitsch <patrick@davids-neighbour.com>",
-  "keywords": [],
+  "keywords": [
+    "hugo",
+    "versioning",
+    "bash"
+  ],
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "14.1.0",
     "@davidsneighbour/markdownlint-config": "2025.2.4",
@@ -21,6 +25,5 @@
     "release": {
       "command": "commit-and-tag-version --sign -a -t \"v\" --releaseCommitMessageFormat \"chore(release): v{{currentTag}}\" -- --no-verify && ./bin/repo/release/postrelease"
     }
-  },
-  "main": "index.js"
+  }
 }
