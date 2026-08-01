@@ -11,7 +11,7 @@
   ],
   "devDependencies": {
     "@davidsneighbour/tools": "2026.0.5",
-    "@dnbhq/markdownlint-config": "0.2.7",
+    "@dnbhq/markdownlint-config": "0.2.11",
     "bats": "1.13.0"
   },
   "scripts": {
