@@ -10,7 +10,7 @@
     "bash"
   ],
   "devDependencies": {
-    "@davidsneighbour/tools": "2026.0.5",
+    "@davidsneighbour/tools": "2026.0.6",
     "@dnbhq/markdownlint-config": "0.2.7",
     "bats": "1.13.0"
   },
