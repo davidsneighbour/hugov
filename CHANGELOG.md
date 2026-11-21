@@ -1,5 +1,16 @@
 # Changelog
 
+## [2026.2.0](https://github.com/davidsneighbour/hugov/compare/v2026.1.0...v2026.2.0) (2026-11-21)
+
+### Features
+
+* **hugov:** use the standard build from Hugo v0.170.0 ([cac073c](https://github.com/davidsneighbour/hugov/commit/cac073cae267b79c18668226e0276a2fbe0bd806))
+
+### Build
+
+* **deps:** bump js-yaml from 4.1.0 to 4.2.0 in the npm_and_yarn group across 1 directory ([#60](https://github.com/davidsneighbour/hugov/issues/60)) ([a6aa2a1](https://github.com/davidsneighbour/hugov/commit/a6aa2a15e33f098f1030ced4ec35e3fe88637f15))
+* **deps:** replace deprecated @davidsneighbour/tools ([eec2ae2](https://github.com/davidsneighbour/hugov/commit/eec2ae2cb38c1ebf7eb871bc352cc59792b17087))
+
 ## [2026.1.0](https://github.com/davidsneighbour/hugov/compare/v2026.0.0...v2026.1.0) (2026-06-05)
 
 ### Features
