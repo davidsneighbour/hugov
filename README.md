@@ -48,6 +48,17 @@ Options: `--bindir <dir>`, `--extended` (default) / `--standard` / `--both`,
 SHA256 checksums, and detects your OS/architecture (`uname`) to pick the right
 release asset.
 
+### Hugo release format changes
+
+Hugo changed how it publishes releases at some versions. `hugov` handles these changes. The cut-over versions are set at the top of the `hugov` script. Add new ones there when Hugo changes its releases again.
+
+| First version | Change                                                                                                | What `hugov` does                                                                                                                              |
+| ------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `v0.102.3`    | The linux/amd64 asset name changed from `Linux-64bit` to `linux-amd64`.                               | Uses the correct asset name for each version.                                                                                                  |
+| `v0.170.0`    | The extended build was removed. The single remaining binary has all extended features except LibSass. | Downloads and links the standard build. Shows a warning when the extended build is requested, also by default and with `--both`.               |
+
+From `v0.170.0`, Hugo still publishes some `hugo_extended_*` archives as aliases, but they are identical to the standard archives. If an earlier `hugov` run saved one of these as `hugo-<version>-extended`, `hugov` uses that file and does not download the same binary again.
+
 ### Configuration
 
 | Variable             | Default    | Description                                                                          |

@@ -83,3 +83,72 @@ setup() {
   detect_platform
   [ "$ARCH" = "arm64" ]
 }
+
+@test "has_extended_build: versions before v0.170.0 have an extended build" {
+  run has_extended_build v0.169.0
+  [ "$status" -eq 0 ]
+}
+
+@test "has_extended_build: v0.170.0 and later have no extended build" {
+  run has_extended_build v0.170.0
+  [ "$status" -eq 1 ]
+  run has_extended_build v0.171.2
+  [ "$status" -eq 1 ]
+}
+
+@test "has_extended_build: accepts versions without the v prefix" {
+  run has_extended_build 0.170.0
+  [ "$status" -eq 1 ]
+}
+
+@test "resolve_executable: extended request after cut-over uses standard and warns" {
+  DOWNLOAD_DIR="$BATS_TEST_TMPDIR" FLAVOR=extended FLAVOR_SET=true
+  run resolve_executable v0.170.0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Warning: Hugo v0.170.0 has no extended build"* ]]
+  [[ "$output" == *"$BATS_TEST_TMPDIR/hugo-v0.170.0" ]]
+}
+
+@test "resolve_executable: standard request after cut-over does not warn" {
+  DOWNLOAD_DIR="$BATS_TEST_TMPDIR" FLAVOR=standard FLAVOR_SET=true
+  run resolve_executable v0.170.0
+  [ "$output" = "$BATS_TEST_TMPDIR/hugo-v0.170.0" ]
+}
+
+@test "resolve_executable: no prompt after cut-over when no flavor is set" {
+  DOWNLOAD_DIR="$BATS_TEST_TMPDIR" FLAVOR_SET=false
+  run resolve_executable v0.170.0 </dev/null
+  [ "$output" = "$BATS_TEST_TMPDIR/hugo-v0.170.0" ]
+}
+
+@test "resolve_executable: falls back to an older -extended file after cut-over" {
+  DOWNLOAD_DIR="$BATS_TEST_TMPDIR" FLAVOR=extended FLAVOR_SET=true
+  touch "$BATS_TEST_TMPDIR/hugo-v0.170.0-extended"
+  run resolve_executable v0.170.0
+  [[ "$output" == *"$BATS_TEST_TMPDIR/hugo-v0.170.0-extended" ]]
+}
+
+@test "resolve_executable: extended request before cut-over keeps extended" {
+  DOWNLOAD_DIR="$BATS_TEST_TMPDIR" FLAVOR=extended FLAVOR_SET=true
+  run resolve_executable v0.169.0
+  [ "$output" = "$BATS_TEST_TMPDIR/hugo-v0.169.0-extended" ]
+}
+
+@test "download_single_version: --both after cut-over downloads only standard" {
+  FLAVOR=both
+  download_flavor() { echo "flavor=$2"; }
+  run download_single_version v0.170.0
+  [[ "$output" == *"Warning:"* ]]
+  [[ "$output" == *"flavor=standard"* ]]
+  [[ "$output" != *"flavor=extended"* ]]
+}
+
+@test "download_flavor: skips standard download when an older -extended file exists" {
+  DOWNLOAD_DIR="$BATS_TEST_TMPDIR"
+  touch "$BATS_TEST_TMPDIR/hugo-v0.170.0-extended"
+  curl() { echo "curl must not run"; return 1; }
+  run download_flavor v0.170.0 standard
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"identical build already exists"* ]]
+  [[ "$output" != *"curl must not run"* ]]
+}

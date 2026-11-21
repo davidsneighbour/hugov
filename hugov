@@ -26,6 +26,19 @@ BASE_URL="https://api.github.com/repos/gohugoio/hugo/releases"
 # Where release assets are published
 HOST_URL="https://github.com/gohugoio/hugo/releases/download"
 
+# Hugo release format changes. Each entry is the first version with the new
+# behavior. Add new cut-over versions here when Hugo changes its releases.
+#
+# v0.102.3: the linux/amd64 asset name changed from "Linux-64bit" to
+#           "linux-amd64".
+LINUX_AMD64_RENAME_VERSION="v0.102.3"
+# v0.170.0: the extended build was removed. There is only one binary now (it
+#           has all extended features except LibSass). Hugo still publishes
+#           "hugo_extended_*" aliases for some platforms, but they are
+#           identical to the standard archives. hugov uses the standard build
+#           for these versions and warns when the extended build is requested.
+EXTENDED_REMOVED_VERSION="v0.170.0"
+
 # Which build flavor to operate on: standard, extended, or both. Defaults to
 # extended (the most commonly used). FLAVOR_SET tracks whether the user picked
 # one explicitly so interactive commands know to skip their prompt.
@@ -85,7 +98,8 @@ show_help() {
   echo ""
   echo "Options:"
   echo "  --bindir <directory>  Directory for the Hugo symlink (default: $BINDIR)."
-  echo "  --extended            Operate on extended builds (default)."
+  echo "  --extended            Operate on extended builds (default). Hugo $EXTENDED_REMOVED_VERSION"
+  echo "                        and later have no extended build; the standard build is used."
   echo "  --standard            Operate on standard builds."
   echo "  --both                Download both standard and extended builds."
   echo "  --keep <n>            With --prune, keep the newest <n> versions (default: $PRUNE_KEEP)."
@@ -121,6 +135,17 @@ version_ge() {
   [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" == "$2" ]]
 }
 
+# Returns 0 if the given version still has a separate extended build.
+has_extended_build() {
+  # Strip the "v" prefix so "0.170.0" and "v0.170.0" compare the same.
+  ! version_ge "${1#v}" "${EXTENDED_REMOVED_VERSION#v}"
+}
+
+# Warn that the extended build was requested for a version that has none.
+warn_extended_removed() {
+  echo "Warning: Hugo $1 has no extended build (removed in $EXTENDED_REMOVED_VERSION). Using the standard build, which has all extended features except LibSass." >&2
+}
+
 # Perform a GitHub API request, including the auth header when available.
 api_curl() {
   curl -s ${GH_AUTH[@]+"${GH_AUTH[@]}"} "$@"
@@ -130,15 +155,15 @@ api_curl() {
 build_asset_url() {
   local version="$1"
   local flavor="$2"
-  # Hugo switched the linux/amd64 asset naming from "Linux-64bit" to
-  # "linux-amd64" at v0.102.3; everything else uses the modern scheme.
-  local mid_version="v0.102.3"
   local ver="${version#v}"
   local ext_prefix=""
   [[ "$flavor" == "extended" ]] && ext_prefix="extended_"
 
+  # Hugo switched the linux/amd64 asset naming from "Linux-64bit" to
+  # "linux-amd64" at LINUX_AMD64_RENAME_VERSION; everything else uses the
+  # modern scheme.
   local platform
-  if [[ "$OS" == "linux" && "$ARCH" == "amd64" ]] && ! version_ge "$version" "$mid_version"; then
+  if [[ "$OS" == "linux" && "$ARCH" == "amd64" ]] && ! version_ge "$version" "$LINUX_AMD64_RENAME_VERSION"; then
     platform="Linux-64bit"
   elif [[ "$OS" == "darwin" ]]; then
     platform="darwin-universal"
@@ -245,6 +270,14 @@ download_flavor() {
     return 0
   fi
 
+  # Older hugov runs saved the identical post-extended build under the
+  # -extended name. Do not download the same binary again.
+  if [[ "$flavor" == "standard" ]] && ! has_extended_build "$version" &&
+    [ -f "$executable-extended" ]; then
+    echo "Skipping $flavor $version, identical build already exists as $(basename "$executable-extended")."
+    return 0
+  fi
+
   local url
   url="$(build_asset_url "$version" "$flavor")"
   echo "Downloading $flavor Hugo $version from $url..."
@@ -279,6 +312,11 @@ download_single_version() {
   extended) flavors=(extended) ;;
   both) flavors=(standard extended) ;;
   esac
+  # Versions without an extended build only have the standard build.
+  if [[ "$FLAVOR" != "standard" ]] && ! has_extended_build "$version"; then
+    warn_extended_removed "$version"
+    flavors=(standard)
+  fi
   local flavor
   for flavor in "${flavors[@]}"; do
     download_flavor "$version" "$flavor"
@@ -351,6 +389,22 @@ update_versions() {
 resolve_executable() {
   local version="$1"
   local want_extended
+
+  # Versions without an extended build: use the standard build, no prompt.
+  if ! has_extended_build "$version"; then
+    if $FLAVOR_SET && [[ "$FLAVOR" != "standard" ]]; then
+      warn_extended_removed "$version"
+    fi
+    local standard="$DOWNLOAD_DIR/hugo-${version}"
+    # Fall back to an identical build that older hugov runs saved under the
+    # -extended name.
+    if [ ! -f "$standard" ] && [ -f "$standard-extended" ]; then
+      echo "$standard-extended"
+    else
+      echo "$standard"
+    fi
+    return 0
+  fi
 
   if $FLAVOR_SET; then
     [[ "$FLAVOR" == "standard" ]] && want_extended=false || want_extended=true
