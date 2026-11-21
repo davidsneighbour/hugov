@@ -1,7 +1,7 @@
 {
   "name": "hugo-versioning",
   "description": "A quick and dirty GoHugo version selector for bash",
-  "version": "2026.2.0",
+  "version": "2026.2.1",
   "license": "MIT",
   "author": "Patrick Kollitsch <patrick@davids-neighbour.com>",
   "keywords": [

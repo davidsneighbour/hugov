@@ -1,5 +1,12 @@
 # Changelog
 
+## [2026.2.1](https://github.com/davidsneighbour/hugov/compare/v2026.2.0...v2026.2.1) (2026-11-21)
+
+### Build
+
+* **deps:** bump actions/checkout from 6.0.3 to 7.0.1 ([#67](https://github.com/davidsneighbour/hugov/issues/67)) ([5e1af3b](https://github.com/davidsneighbour/hugov/commit/5e1af3bccdcea0648a53829fad44297412e3c795))
+* **deps:** update actions/setup-node action to v7 ([#73](https://github.com/davidsneighbour/hugov/issues/73)) ([8fe2278](https://github.com/davidsneighbour/hugov/commit/8fe22787a1c9fe07db7008d4915c145ef0a404f8))
+
 ## [2026.2.0](https://github.com/davidsneighbour/hugov/compare/v2026.1.0...v2026.2.0) (2026-11-21)
 
 ### Features
